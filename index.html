@@ -366,6 +366,55 @@
       return String(value ?? '').replace(/[^a-zA-Z0-9_-]/g, '');
     }
 
+    function extractGoogleDriveFileId(url) {
+      const value = String(url || '').trim();
+      if (!value) return '';
+      const patterns = [
+        /drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/i,
+        /[?&]id=([a-zA-Z0-9_-]+)/i,
+        /drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/i,
+        /drive\.google\.com\/thumbnail\?id=([a-zA-Z0-9_-]+)/i,
+        /lh3\.googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/i
+      ];
+      for (const pattern of patterns) {
+        const match = value.match(pattern);
+        if (match) return match[1];
+      }
+      return '';
+    }
+
+    function photoDisplayUrl(url) {
+      const value = String(url || '').trim();
+      if (!value) return '';
+      if (value.startsWith('data:image/')) return value;
+      const fileId = extractGoogleDriveFileId(value);
+      if (fileId) return `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w1600`;
+      return value;
+    }
+
+    function photoFallbackUrl(url) {
+      const fileId = extractGoogleDriveFileId(url);
+      return fileId ? `https://lh3.googleusercontent.com/d/${encodeURIComponent(fileId)}=w1600` : '';
+    }
+
+    function handlePhotoError(img, originalUrl) {
+      const fallback = photoFallbackUrl(originalUrl);
+      if (fallback && img.dataset.fallbackTried !== '1') {
+        img.dataset.fallbackTried = '1';
+        img.src = fallback;
+        return;
+      }
+      img.onerror = null;
+      img.classList.add('hidden');
+      const box = img.parentElement;
+      if (box && !box.querySelector('.photo-load-error')) {
+        const msg = document.createElement('div');
+        msg.className = 'photo-load-error text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-3';
+        msg.textContent = 'ไม่สามารถโหลดรูปภาพได้ กรุณาตรวจสอบสิทธิ์การแชร์ไฟล์ใน Google Drive';
+        box.appendChild(msg);
+      }
+    }
+
     function showToast(message, type = 'info') {
       const root = document.getElementById('toast-root');
       if (!root) return;
@@ -727,7 +776,7 @@
             </div>
             <p class="text-sm text-slate-600 mt-2 line-clamp-2">${escapeHTML(r.description)}</p>
           </div>
-          ${r.photo ? `<img src="${r.photo}" class="h-40 w-full object-cover rounded-xl border border-slate-100">` : ''}
+          ${r.photo ? `<div class="report-photo-wrap"><img src="${escapeHTML(photoDisplayUrl(r.photo))}" data-original-photo="${escapeHTML(r.photo)}" onerror="handlePhotoError(this, this.dataset.originalPhoto)" loading="lazy" referrerpolicy="no-referrer" class="h-40 w-full object-cover rounded-xl border border-slate-100 bg-slate-100"></div>` : ''}
           <div class="pt-2 border-t border-slate-100 flex justify-between items-center text-xs text-slate-500">
             <span>👤 ${escapeHTML(r.reporter)}</span>
             <button onclick="openModal(decodeURIComponent('${encodeURIComponent(r.id)}'))" class="text-indigo-600 font-bold hover:underline">ดูรายละเอียด</button>
@@ -874,7 +923,7 @@
           <div><strong>ผู้แจ้ง:</strong> ${escapeHTML(r.reporter)} (${escapeHTML(r.phone)})</div>
           <div><strong>พิกัด:</strong> ${escapeHTML(r.lat)}, ${escapeHTML(r.lng)}</div>
           ${r.adminNote ? `<div class="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900"><strong>บันทึกจากเจ้าหน้าที่:</strong> ${escapeHTML(r.adminNote)}</div>` : ''}
-          ${r.photo ? `<img src="${r.photo}" class="w-full h-56 object-cover rounded-xl border border-slate-200">` : ''}
+          ${r.photo ? `<div class="report-photo-wrap"><img src="${escapeHTML(photoDisplayUrl(r.photo))}" data-original-photo="${escapeHTML(r.photo)}" onerror="handlePhotoError(this, this.dataset.originalPhoto)" referrerpolicy="no-referrer" class="w-full h-56 object-cover rounded-xl border border-slate-200 bg-slate-100"></div>` : ''}
         </div>
       `;
       document.getElementById('detail-modal').classList.remove('hidden');
